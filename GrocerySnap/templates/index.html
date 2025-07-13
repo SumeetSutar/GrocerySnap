@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GrocerySnap</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #fffef8;
+      color: #333;
+    }
+
+    header {
+      background: #ffaf40;
+      color: white;
+      padding: 20px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    main {
+      max-width: 800px;
+      margin: 30px auto;
+      padding: 20px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      color: #444;
+      margin-bottom: 10px;
+    }
+
+    .upload-area {
+      border: 2px dashed #ccc;
+      padding: 30px;
+      text-align: center;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      background: #f9f9f9;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .btn {
+      display: inline-block;
+      background: #ff914d;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 10px 5px;
+    }
+
+    .btn:hover {
+      background: #ff7a26;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    .preview-img {
+      max-width: 100%;
+      margin: 10px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .error {
+      color: red;
+      margin: 15px 0;
+      font-weight: bold;
+    }
+
+    .section {
+      margin-top: 30px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .loading {
+      margin-top: 10px;
+      color: #888;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <header>🥕 GrocerySnap – AI Grocery List from Food Image</header>
+  <main>
+    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+      <p>📸 Click or drag an image here to upload a dish</p>
+      <input type="file" id="fileInput" accept="image/*" />
+    </div>
+
+    <div id="previewContainer"></div>
+
+    <div class="btn-row">
+      <button class="btn" onclick="generateIngredients()">📝 Generate Grocery List</button>
+      <button class="btn" onclick="generateSteps()">👩‍🍳 Generate Recipe Steps</button>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="downloadIngredientsBtn">⬇️ Download Grocery List PDF</button>
+      <button class="btn" id="downloadStepsBtn">⬇️ Download Recipe Steps PDF</button>
+    </div>
+
+    <div class="section">
+      <h2>🛒 Grocery List</h2>
+      <ul id="ingredientsList"></ul>
+    </div>
+
+    <div class="section">
+      <h2>📖 Recipe Steps</h2>
+      <ul id="stepsList"></ul>
+    </div>
+
+    <div id="error" class="error"></div>
+    <div id="loading" class="loading"></div>
+  </main>
+
+  <script>
+    let selectedFile = null;
+    let currentIngredients = [];
+    let currentSteps = [];
+
+    document.getElementById("fileInput").addEventListener("change", function (event) {
+      selectedFile = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        document.getElementById("previewContainer").innerHTML =
+          `<img src="${e.target.result}" class="preview-img" />`;
+      };
+      reader.readAsDataURL(selectedFile);
+    });
+
+    function showError(msg) {
+      document.getElementById("error").innerText = msg;
+      setTimeout(() => document.getElementById("error").innerText = "", 4000);
+    }
+
+    function setLoading(msg = "") {
+      document.getElementById("loading").innerText = msg;
+    }
+
+    async function generateIngredients() {
+      if (!selectedFile) return showError("Please upload an image first.");
+      setLoading("Analyzing image and generating grocery list...");
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      try {
+        const response = await fetch("/generate", { method: "POST", body: formData });
+        const data = await response.json();
+        if (data.success) {
+          currentIngredients = data.items;
+          const list = document.getElementById("ingredientsList");
+          list.innerHTML = "";
+          data.items.forEach(item => {
+            const li = document.createElement("li");
+            li.innerText = item;
+            list.appendChild(li);
+          });
+        } else {
+          showError(data.error);
+        }
+      } catch (err) {
+        showError("Something went wrong!");
+      }
+      setLoading();
+    }
+
+    async function generateSteps() {
+      if (!selectedFile) return showError("Please upload an image first.");
+      setLoading("Generating recipe steps...");
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      try {
+        const response = await fetch("/get-recipe-steps", { method: "POST", body: formData });
+        const data = await response.json();
+        if (data.success) {
+          currentSteps = data.steps;
+          const list = document.getElementById("stepsList");
+          list.innerHTML = "";
+          data.steps.forEach(step => {
+            const li = document.createElement("li");
+            li.innerText = step;
+            list.appendChild(li);
+          });
+        } else {
+          showError(data.error);
+        }
+      } catch (err) {
+        showError("Something went wrong!");
+      }
+      setLoading();
+    }
+
+    document.getElementById('downloadIngredientsBtn').addEventListener('click', async () => {
+      if (currentIngredients.length === 0) return;
+      try {
+        const response = await fetch('/download-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: currentIngredients })
+        });
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'grocery_list.pdf';
+        a.click();
+      } catch (e) {
+        showError("Failed to download PDF.");
+      }
+    });
+
+    document.getElementById('downloadStepsBtn').addEventListener('click', async () => {
+      if (currentSteps.length === 0) return;
+      try {
+        const response = await fetch('/download-steps-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ steps: currentSteps })
+        });
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'recipe_steps.pdf';
+        a.click();
+      } catch (e) {
+        showError("Failed to download PDF.");
+      }
+    });
+  </script>
+</body>
+</html>
